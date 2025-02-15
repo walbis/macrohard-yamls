@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: talep-takip
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: talep-takip
+  template:
+    metadata:
+      labels:
+        app: talep-takip
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: postgres:15
+          command: ['sh', '-c', 'until pg_isready -h postgres -p 5432; do echo waiting for database; sleep 2; done;']
+          envFrom:
+            - secretRef:
+                name: talep-takip-secrets
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: PGPORT
+              value: "5432"
+        - name: init-db
+          image: tkkaray/talep-takip:v1
+          command: ['sh', '-c', 'python manage.py migrate --noinput']
+          envFrom:
+            - secretRef:
+                name: talep-takip-secrets
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: DJANGO_DEBUG
+              value: "True"
+            - name: ALLOWED_HOSTS
+              value: "*"
+      containers:
+        - name: talep-takip
+          image: tkkaray/talep-takip:v1
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: talep-takip-secrets
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: DJANGO_DEBUG
+              value: "True"
+            - name: ALLOWED_HOSTS
+              value: "*"
+          command: ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]
+          startupProbe:
+            httpGet:
+              path: /admin/login/
+              port: 8000
+            failureThreshold: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: media-storage
+              mountPath: /app/mediafiles
+          resources: {}
+          livenessProbe:
+            httpGet:
+              path: /health/
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: media-storage
+          persistentVolumeClaim:
+            claimName: talep-takip-media-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: talep-takip
+spec:
+  selector:
+    app: talep-takip
+  ports:
+    - port: 80
+      targetPort: 8000
+  type: LoadBalancer

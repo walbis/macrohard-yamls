@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: talep-takip-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: talep-takip
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: talep-takip
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+        - podSelector:
+            matchLabels:
+              app: talep-takip
+      ports:
+        - protocol: TCP
+          port: 5432

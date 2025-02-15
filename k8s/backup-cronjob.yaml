@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+spec:
+  schedule: "0 1 * * *"  # Her gün gece 01:00'de
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: postgres-backup
+              image: postgres:15
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  pg_dump -h postgres -U postgres -d talep_takip > /backup/backup-$(date +%Y%m%d).sql
+              envFrom:
+                - secretRef:
+                    name: talep-takip-secrets
+              volumeMounts:
+                - name: backup-volume
+                  mountPath: /backup
+          volumes:
+            - name: backup-volume
+              persistentVolumeClaim:
+                claimName: backup-pvc
+          restartPolicy: OnFailure
